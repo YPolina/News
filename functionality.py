@@ -345,6 +345,38 @@ class EDA:
 
         return short_headlines, long_headlines, short_descriptions, long_descriptions
 
+    def analyze_date_trends(self):
+
+        """
+        Time trend analysis of the overall data and category groups 
+
+        """
+
+        self.data['month_year'] = self.data['date'].dt.to_period('M')
+        trends = self.data.groupby('month_year').size()
+
+        plt.figure(figsize = (12,6))
+        trends.plot(kind = 'line', color = 'skyblue', marker = 'o')
+        plt.title('Articles Volume over time')
+        plt.xlabel('Month-Year')
+        plt.ylabel('Number of Articles')
+        plt.grid(True)
+        plt.show()
+
+        #Trends by category_group
+        category_trends = self.data.groupby(['month_year', 'category_group']).size().unstack(fill_value=0)
+        
+        plt.figure(figsize = (14,8))
+        category_trends.plot(figsize = (14,8), kind = 'line', marker='o', colormap='tab10')
+        plt.title('Articles Volume over time by Category Group')
+        plt.xlabel('Month-Year')
+        plt.ylabel('Number of Articles')
+        plt.legend(title = 'Category Group', bbox_to_anchor = (1.05, 1), loc = 'upper left')
+        plt.tight_layout()
+        plt.grid(True)
+        plt.show()
+    
+    
 
 
         
