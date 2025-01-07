@@ -299,6 +299,51 @@ class EDA:
         plt.xticks(rotation=45, ha="right")
         plt.show()
 
+    def analyze_length_outliers(self):
+        """
+        Length outlier analysis in short description and headline
+
+        """
+
+        # Calculate length of headlines and descriptions
+        self.data['headline_length'] = self.data['headline'].apply(len)
+        self.data['description_length'] = self.data['short_description'].apply(len)
+
+
+        # Plot distributions
+        plt.figure(figsize = (10,6))
+
+        plt.subplot(1,2,1)
+        sns.boxplot(self.data['headline_length'], color = 'skyblue')
+        plt.title('Headline Length Plot Distribution')
+        plt.xlabel('Length (characters)')
+
+        plt.subplot(1,2,2)
+        sns.boxplot(self.data['description_length'], color = 'lightgreen')
+        plt.title('Short Description Plot Distribution')
+        plt.xlabel('Length (characters)')
+
+        plt.tight_layout()
+        plt.show()
+
+        # Thresholds for outliers
+        short_headline_threshold = 5
+        long_headline_threshold = 110
+        short_description_threshold = 10
+        long_description_threshold = 300
+
+        # Identify long headlines/descriptions
+        short_headlines = self.data[self.data['headline_length'] <= short_headline_threshold]
+        long_headlines = self.data[self.data['headline_length'] > long_headline_threshold]
+        short_descriptions = self.data[self.data['description_length'] <= short_description_threshold]
+        long_descriptions = self.data[self.data['description_length'] > long_description_threshold]
+
+        print(f"Number of short headlines (<{short_headline_threshold} chars): {len(short_headlines)}")
+        print(f"Number of long headlines (>{long_headline_threshold} chars): {len(long_headlines)}")
+        print(f"Number of short descriptions (<={short_description_threshold} chars): {len(short_descriptions)}")
+        print(f"Number of long descriptions (>{long_description_threshold} chars): {len(long_descriptions)}")
+
+        return short_headlines, long_headlines, short_descriptions, long_descriptions
 
 
 
