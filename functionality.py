@@ -12,7 +12,6 @@ import re
 import string
 import contractions
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.cluster import AgglomerativeClustering
 import numpy as np
 import scipy.cluster.hierarchy as sch
 from collections import Counter
@@ -165,29 +164,47 @@ def tf_idf_vectors(text: str):
 
     return category_vectors
 
+def map_category_to_group(category_groups: dict, category:str) -> str:
+
+        """
+        Map category to the bigger one
+
+        Parameters:
+        category_groups:dict - categories as keys, subcategories as values
+        category: str - mapped category
+
+        Returns:
+        groupped category for mapped category
+
+        """
+
+        for group, subcategories in category_groups.items():
+            if category in subcategories:
+                return group
+
 class EDA:
     """
     Class for EDA task
 
     """
-    def __init__(self):
+    def __init__(self, data:pd.DataFrame):
         """
         Class initialization
+        data - pd.Dataframe for EDA
         """
-        self.data = None
+        self.data = data
 
-    def plot_class_distribution(self, df, category_col:str ='category'):
+    def plot_class_distribution(self, category_col:str ='category'):
 
         """
         Plot of class distribution
 
         Parameters:
-        df - pd.Dataframe for EDA
         category_col - column with news categories
         """
 
         plt.figure(figsize=(12, 6))
-        category_counts = df[category_col].value_counts()
+        category_counts = self.data[category_col].value_counts()
         sns.barplot(x=category_counts.index, y=category_counts.values, palette='viridis', hue = category_counts)
         plt.xticks(rotation=90)
         plt.title('Category Distribution')
@@ -195,7 +212,7 @@ class EDA:
         plt.ylabel('Number of Articles')
         plt.show()
 
-    def categories_clusters(self, df: pd.DataFrame):
+    def categories_clusters(self):
         
         """
         Plot of categories clusters
@@ -203,7 +220,6 @@ class EDA:
         Parameters:
         df - pd.Dataframe for EDA
         """
-        self.data = df
         self.data['processed_text'] = (self.data['headline'] + " " + self.data['short_description']).apply(preprocess_text)
 
         #Data group by category
@@ -221,6 +237,35 @@ class EDA:
         plt.ylabel('Euclidean Distance')
         plt.xticks(rotation=90)
         plt.show()
+
+    def most_common_words_per_big_category(self, category_groups: dict):
+        """
+        Map category to the bigger one
+
+        Parameters:
+        category_groups:dict - categories as keys, subcategories as values
+        """
+        
+        self.data['category_group'] = self.data['category'].apply(
+        lambda category: map_category_to_group(category_groups, category)
+    )
+
+        for group in category_groups.keys():
+            group_text = " ".join(self.data[self.data['category_group'] == group]['processed_text'])
+            group_word_counts = Counter(group_text.split()).most_common(10)
+            print(f"Most Common Words in {group}:", group_word_counts)
+
+            # Plot the most common words
+            words, counts = zip(*group_word_counts)
+            plt.figure(figsize=(10, 5))
+            plt.bar(words, counts, color='skyblue')
+            plt.title(f"Top 10 Words in {group}")
+            plt.xlabel("Words")
+            plt.ylabel("Frequency")
+            plt.xticks(rotation=45)
+            plt.show()
+
+
 
 
         
