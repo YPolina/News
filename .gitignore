@@ -1,0 +1,6 @@
+/venv
+*.csv
+kaggle.json
+/__pycache__
+/news-category-dataset
+/data
