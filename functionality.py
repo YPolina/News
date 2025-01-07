@@ -4,6 +4,26 @@ import opendatasets as od
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+import nltk
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+from nltk.stem import WordNetLemmatizer
+import re
+import string
+import contractions
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.cluster import AgglomerativeClustering
+import numpy as np
+import scipy.cluster.hierarchy as sch
+from collections import Counter
+
+
+nltk.download('punkt_tab')
+nltk.download('wordnet')
+nltk.download('stopwords')
+
+stop_words = set(stopwords.words('english'))
+lemmatizer = WordNetLemmatizer()
 
 
 def extraction(
@@ -98,37 +118,113 @@ def file_saving(df: pd.DataFrame, save_directory: str) -> None:
     """
     df.to_parquet(save_directory)
 
+def preprocess_text(text:str) -> str:
+
+    """
+    Preprocessing text into tokens with cleaning
+
+    Parameters:
+    text - text in string format to preprocess
+    
+    Returns:
+    preprocessed_text: str - text after preprocessing
+    """
+    # Expand contractions
+    text = contractions.fix(text)
+
+    # Remove punctuation and normalize quotes
+    text = re.sub(r'[“”‘’\'"`]', '', text)
+    text = text.translate(str.maketrans('', '', string.punctuation))
+
+
+    # Tokenize and lowercase
+    tokens = word_tokenize(text.lower())
+    # Remove stopwords, punctuation, and lemmatize
+    tokens = [lemmatizer.lemmatize(word) for word in tokens if word not in stop_words and word not in string.punctuation]
+    preprocessed_text = " ".join(tokens)
+
+    return preprocessed_text
+
+
+def tf_idf_vectors(text: str):
+    """
+    tf-idf embeddings
+
+    Parameters:
+    text - text for df_idf
+    
+    Returns:
+    category_vectors: np.array - vectors of words
+    """
+
+    vectorizer = TfidfVectorizer(max_features=5000)
+    tfidf_matrix = vectorizer.fit_transform(text)
+
+    # Convert to array for clustering
+    category_vectors = tfidf_matrix.toarray()
+
+    return category_vectors
 
 class EDA:
     """
     Class for EDA task
 
     """
-    def __init__(self, df: pd.DataFrame):
+    def __init__(self):
         """
         Class initialization
-
-        Parameters:
-        df - pd.Dataframe for EDA
         """
-        self.df = df
+        self.data = None
 
-    def plot_class_distribution(self, category_col:str ='category'):
+    def plot_class_distribution(self, df, category_col:str ='category'):
 
         """
         Plot of class distribution
 
         Parameters:
+        df - pd.Dataframe for EDA
         category_col - column with news categories
         """
 
         plt.figure(figsize=(12, 6))
-        category_counts = self.df[category_col].value_counts()
+        category_counts = df[category_col].value_counts()
         sns.barplot(x=category_counts.index, y=category_counts.values, palette='viridis', hue = category_counts)
         plt.xticks(rotation=90)
         plt.title('Category Distribution')
         plt.xlabel('Category')
         plt.ylabel('Number of Articles')
         plt.show()
+
+    def categories_clusters(self, df: pd.DataFrame):
+        
+        """
+        Plot of categories clusters
+
+        Parameters:
+        df - pd.Dataframe for EDA
+        """
+        self.data = df
+        self.data['processed_text'] = (self.data['headline'] + " " + self.data['short_description']).apply(preprocess_text)
+
+        #Data group by category
+        category_data = self.data.groupby('category')['processed_text'].apply(' '.join).reset_index()
+        #TF-idf vectors for category_data
+        category_vectors = tf_idf_vectors(category_data['processed_text'])
+
+        #Similarity between different categories
+        similarity_matrix = cosine_similarity(category_vectors)
+        similarity_df = pd.DataFrame(similarity_matrix, index=category_data['category'], columns=category_data['category'])
+
+        dendrogram = sch.dendrogram(sch.linkage(category_vectors, method='ward'), labels=category_data['category'].values)
+        plt.title('Dendrogram for Category Merging')
+        plt.xlabel('Categories')
+        plt.ylabel('Euclidean Distance')
+        plt.xticks(rotation=90)
+        plt.show()
+
+
+        
+
+
 
 

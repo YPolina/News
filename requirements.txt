@@ -5,3 +5,4 @@ pyarrow
 fastparquet
 matplotlib
 seaborn
+contractions
