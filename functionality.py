@@ -1,6 +1,7 @@
 import pandas as pd
 import os
 import opendatasets as od
+import pandas as pd
 
 
 def extraction(
@@ -25,3 +26,24 @@ def extraction(
                 break
     except:
         print("Error during loading.")
+
+
+def loading(file_path: str) -> pd.DataFrame:
+    """
+    Load file into dataframe
+
+    Parameters:
+    file_path:str - .csv or .json format
+
+    Returns:
+    dataframe - data in dataframe format if load is successful, else - error notification
+    """
+
+    if file_path[-4:] == "json":
+        dataframe = pd.read_json(file_path, lines=True)
+    elif file_path[-3:] == "csv":
+        dataframe = pd.read_csv(file_path, index_col=False)
+    else:
+        return "Invalid file format. .csv or .json expected"
+    return dataframe
+
