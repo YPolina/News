@@ -145,24 +145,27 @@ def preprocess_text(text:str) -> str:
     return preprocessed_text
 
 
-def tf_idf_vectors(text: str):
+def tf_idf(text: str, max_features: int = 100):
     """
     tf-idf embeddings
 
     Parameters:
-    text - text for df_idf
+    text:str - text for df_idf
+    max_features:int
     
     Returns:
-    category_vectors: np.array - vectors of words
+    tf_idf_vectors: np.array - vectors of words
+    tfidf_df - 
     """
 
-    vectorizer = TfidfVectorizer(max_features=5000)
-    tfidf_matrix = vectorizer.fit_transform(text)
+    tfidf = TfidfVectorizer(max_features=max_features, stop_words='english')
+    tfidf_matrix = tfidf.fit_transform(text)
 
-    # Convert to array for clustering
-    category_vectors = tfidf_matrix.toarray()
+    tf_idf_vectors = tfidf_matrix.toarray()
+    feature_names = tfidf.get_feature_names_out()
+    tfidf_df = pd.DataFrame(tf_idf_vectors, columns=feature_names)
 
-    return category_vectors
+    return tf_idf_vectors, tfidf_df
 
 def map_category_to_group(category_groups: dict, category:str) -> str:
 
@@ -225,7 +228,7 @@ class EDA:
         #Data group by category
         category_data = self.data.groupby('category')['processed_text'].apply(' '.join).reset_index()
         #TF-idf vectors for category_data
-        category_vectors = tf_idf_vectors(category_data['processed_text'])
+        category_vectors, _ = tf_idf(category_data['processed_text'], max_features=5000)
 
         #Similarity between different categories
         similarity_matrix = cosine_similarity(category_vectors)
@@ -240,7 +243,7 @@ class EDA:
 
     def most_common_words_per_big_category(self, category_groups: dict):
         """
-        Map category to the bigger one
+        Top 10 words per aggregated category
 
         Parameters:
         category_groups:dict - categories as keys, subcategories as values
@@ -264,6 +267,37 @@ class EDA:
             plt.ylabel("Frequency")
             plt.xticks(rotation=45)
             plt.show()
+
+    def words_tfidf_per_big_category(self, category_groups: dict):
+        """
+        Top 10 words per aggregated category
+
+        Parameters:
+        category_groups:dict - categories as keys, subcategories as values
+        """
+
+        _, tf_idf_df = tf_idf(self.data['processed_text'], max_features=100)
+
+        tfidf_by_category = pd.concat([self.data['category_group'], tf_idf_df], axis=1).groupby('category_group').mean()
+
+        # Display top words for each group
+        top_words_per_group = {}
+        for group in tfidf_by_category.index:
+            top_words = tfidf_by_category.loc[group].sort_values(ascending=False).head(10)
+            top_words_per_group[group] = top_words
+
+        top_words_df = pd.DataFrame(top_words_per_group).T
+
+        # Plot the data as a heatmap
+        plt.figure(figsize=(12, 8))
+        sns.heatmap(
+            top_words_df, annot=True, fmt=".2f", cmap="YlGnBu", cbar_kws={"label": "TF-IDF Score"}
+        )
+        plt.title("Top TF-IDF Words per Aggregated Category", fontsize=16)
+        plt.ylabel("Category Group", fontsize=12)
+        plt.xlabel("Words", fontsize=12)
+        plt.xticks(rotation=45, ha="right")
+        plt.show()
 
 
 
