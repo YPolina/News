@@ -33,7 +33,7 @@ def loading(file_path: str) -> pd.DataFrame:
     Load file into dataframe
 
     Parameters:
-    file_path:str - .csv or .json format
+    file_path:str - .csv/.json/.parquet formats
 
     Returns:
     dataframe - data in dataframe format if load is successful, else - error notification
@@ -43,8 +43,10 @@ def loading(file_path: str) -> pd.DataFrame:
         dataframe = pd.read_json(file_path, lines=True)
     elif file_path[-3:] == "csv":
         dataframe = pd.read_csv(file_path, index_col=False)
+    elif file_path[-7:] == 'parquet':
+        dataframe = pd.read_parquet(file_path)
     else:
-        return "Invalid file format. .csv or .json expected"
+        return "Invalid file format. .csv/.json/.parquet expected"
     return dataframe
 
 
@@ -83,3 +85,14 @@ def transform(df: pd.DataFrame) -> pd.DataFrame:
         print('Column "date" converted to datetime.')
 
     return df
+
+def file_saving(df: pd.DataFrame, save_directory: str) -> None:
+    """
+    Data saving in parquet format
+
+    Parameters:
+    df - pd.Dataframe to save
+    save_directory - path for saving
+    """
+    df.to_parquet(save_directory)
+

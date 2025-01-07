@@ -1,3 +1,5 @@
 opendatasets
 pandas
 black
+pyarrow
+fastparquet
