@@ -47,3 +47,39 @@ def loading(file_path: str) -> pd.DataFrame:
         return "Invalid file format. .csv or .json expected"
     return dataframe
 
+
+def transform(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Data Transform step to ensure appropriate data format, absence of nan and duplicated values
+
+    Parameters:
+    df - pd.Dataframe with our data
+
+    Returns:
+    df - formatted version of our data
+    """
+
+    # NAN values
+    if (df.isna().sum() <= len(df) * 0.03).any():
+        df.dropna(inplace=True)
+        print(
+            "The number of NaN values is less than or equal to 3%.\nNan values are dropped successfully."
+        )
+    else:
+        df.fillna(0, inplace=True)
+        print(
+            "The number of NaN values is more than 3%.\nNan values are filled with 0 successfully."
+        )
+
+    # Duplicated values
+    if df.duplicated().any():
+        print(f"The number of duplicated rows is {df.duplicated().sum()/len(df):.3%}.")
+        df.drop_duplicates(inplace=True)
+        print("Duplicated values are dropped successfully.")
+
+    # Datetime check
+    if "date" in df:
+        df["date"] = pd.to_datetime(df["date"], errors="raise")
+        print('Column "date" converted to datetime.')
+
+    return df
