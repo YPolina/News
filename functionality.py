@@ -2,6 +2,8 @@ import pandas as pd
 import os
 import opendatasets as od
 import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 
 def extraction(
@@ -95,4 +97,38 @@ def file_saving(df: pd.DataFrame, save_directory: str) -> None:
     save_directory - path for saving
     """
     df.to_parquet(save_directory)
+
+
+class EDA:
+    """
+    Class for EDA task
+
+    """
+    def __init__(self, df: pd.DataFrame):
+        """
+        Class initialization
+
+        Parameters:
+        df - pd.Dataframe for EDA
+        """
+        self.df = df
+
+    def plot_class_distribution(self, category_col:str ='category'):
+
+        """
+        Plot of class distribution
+
+        Parameters:
+        category_col - column with news categories
+        """
+
+        plt.figure(figsize=(12, 6))
+        category_counts = self.df[category_col].value_counts()
+        sns.barplot(x=category_counts.index, y=category_counts.values, palette='viridis', hue = category_counts)
+        plt.xticks(rotation=90)
+        plt.title('Category Distribution')
+        plt.xlabel('Category')
+        plt.ylabel('Number of Articles')
+        plt.show()
+
 
