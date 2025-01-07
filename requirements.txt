@@ -3,3 +3,6 @@ pandas
 black
 pyarrow
 fastparquet
+matplotlib
+seaborn
+contractions
