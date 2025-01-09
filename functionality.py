@@ -25,97 +25,130 @@ stop_words = set(stopwords.words('english'))
 lemmatizer = WordNetLemmatizer()
 
 
-def extraction(
-    dataset_url: str = "https://www.kaggle.com/datasets/rmisra/news-category-dataset/data",
-    API_kaggle: str = "kaggle.json",
-    data_file: str = "News_Category_Dataset_v3.json",
-) -> None:
+class ETL:
     """
-    Data loading from Kaggle source
+    Class for ETL
 
-    Parameters:
-    dataset_url - URL of the Kaggle data
-    API_kaggle - Kaggle API token'
-    data_file - name of downloaded file
-    """
-    os.environ["KAGGLE_CONFIG_DIR"] = API_kaggle
-    try:
-        od.download(dataset_url)
-        for root, dirs, files in os.walk(os.getcwd()):
-            if data_file in files:
-                print("File downloaded to a:", os.path.join(root, data_file))
-                break
-    except:
-        print("Error during loading.")
-
-
-def loading(file_path: str) -> pd.DataFrame:
-    """
-    Load file into dataframe
-
-    Parameters:
-    file_path:str - .csv/.json/.parquet formats
-
-    Returns:
-    dataframe - data in dataframe format if load is successful, else - error notification
     """
 
-    if file_path[-4:] == "json":
-        dataframe = pd.read_json(file_path, lines=True)
-    elif file_path[-3:] == "csv":
-        dataframe = pd.read_csv(file_path, index_col=False)
-    elif file_path[-7:] == 'parquet':
-        dataframe = pd.read_parquet(file_path)
-    else:
-        return "Invalid file format. .csv/.json/.parquet expected"
-    return dataframe
+    def __init__(
+        self,
+        dataset_url: str = "https://www.kaggle.com/datasets/rmisra/news-category-dataset/data",
+        API_kaggle: str = "kaggle.json",
+        data_file: str = "News_Category_Dataset_v3.json",
+        save_directory: str = "./data/processed_data.parquet",
+    ):
+        """
+        Class initialization
 
+        Parameters:
+        dataset_url - URL of the Kaggle data
+        API_kaggle - Kaggle API token'
+        data_file - name of downloaded file
+        save_directory - path for saving
+        """
+        self.dataset_url = dataset_url
+        self.API_kaggle = API_kaggle
+        self.data_file = data_file
+        self.save_directory = save_directory
+        self.data = None
 
-def transform(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Data Transform step to ensure appropriate data format, absence of nan and duplicated values
+    def extraction(self) -> None:
+        """
+        Data loading from Kaggle source
+        Downloads the dataset using the Kaggle API
 
-    Parameters:
-    df - pd.Dataframe with our data
+        """
+        os.environ["KAGGLE_CONFIG_DIR"] = self.API_kaggle
+        try:
+            od.download(self.dataset_url)
 
-    Returns:
-    df - formatted version of our data
-    """
+            # Check if file exists after download
+            for root, dirs, files in os.walk(os.getcwd()):
+                if self.data_file in files:
+                    print(f"File downloaded: {os.path.join(root, self.data_file)}")
+                    break
+        except Exception as e:
+            print(f"Error during loading: {e}")
 
-    # NAN values
-    if (df.isna().sum() <= len(df) * 0.03).any():
-        df.dropna(inplace=True)
-        print(
-            "The number of NaN values is less than or equal to 3%.\nNan values are dropped successfully."
-        )
-    else:
-        df.fillna(0, inplace=True)
-        print(
-            "The number of NaN values is more than 3%.\nNan values are filled with 0 successfully."
-        )
+    def loading(
+        self, file_path: str = "news-category-dataset\\News_Category_Dataset_v3.json"
+    ) -> pd.DataFrame:
+        """
+        Load file into dataframe (supports .csv, .json, .parquet formats).
 
-    # Duplicated values
-    if df.duplicated().any():
-        print(f"The number of duplicated rows is {df.duplicated().sum()/len(df):.3%}.")
-        df.drop_duplicates(inplace=True)
-        print("Duplicated values are dropped successfully.")
+        Parameters:
+        file_path: str - Path to the file (e.g., .csv/.json/.parquet)
 
-    # Datetime check
-    if "date" in df:
-        df["date"] = pd.to_datetime(df["date"], errors="raise")
-        print('Column "date" converted to datetime.')
+        Returns:
+        dataframe: pd.DataFrame - Loaded data in a dataframe format
+        """
+        if file_path.endswith(".json"):
+            dataframe = pd.read_json(file_path, lines=True)
+        elif file_path.endswith(".csv"):
+            dataframe = pd.read_csv(file_path, index_col=False)
+        elif file_path.endswith(".parquet"):
+            dataframe = pd.read_parquet(file_path)
+        else:
+            raise ValueError("Invalid file format. Expected .csv, .json, or .parquet.")
+        self.data = dataframe
 
-    return df
+        return self.data
 
-def file_saving(df: pd.DataFrame, save_directory: str) -> None:
-    """
-    Data saving in parquet format
+    def transform(self) -> pd.DataFrame:
+        """
+        Data Transform step to ensure appropriate data format, absence of NaN, and duplicated values
 
-    Parameters:
-    df - pd.Dataframe to save
-    save_directory - path for saving
-    """
-    df.to_parquet(save_directory)
+        Returns:
+        self.data: pd.DataFrame - Transformed data
+        """
+        # Handle NaN values
+        if (self.data.isna().sum() <= len(self.data) * 0.03).any():
+            self.data.dropna(inplace=True)
+            print("Dropped NaN values (less than or equal to 3%).")
+        else:
+            self.data.fillna(0, inplace=True)
+            print("Filled NaN values (more than 3%) with 0.")
+
+        # Handle duplicated rows
+        if self.data.duplicated().any():
+            print(
+                f"Duplicated rows: {self.data.duplicated().sum() / len(self.data):.3%}. Dropping duplicates."
+            )
+            self.data.drop_duplicates(inplace=True)
+
+        # Convert 'date' column to datetime if it exists
+        if "date" in self.data:
+            self.data["date"] = pd.to_datetime(self.data["date"], errors="raise")
+            print('Converted "date" column to datetime format.')
+
+        return self.data
+
+    def file_saving(self, df: pd.DataFrame) -> None:
+        """
+        Save the dataframe to a parquet file.
+
+        Parameters:
+        df: pd.DataFrame - The dataframe to save
+        """
+        df.to_parquet(self.save_directory)
+        print(f"Data saved to: {self.save_directory}")
+
+    def run_etl(self) -> None:
+        """
+        Run the entire ETL process: extraction, loading, transforming, and saving the data.
+        """
+        # Step 1: Data Extraction
+        self.extraction()
+
+        # Step 2: Data Loading
+        df = self.loading()
+
+        # Step 3: Data Transformation
+        df = self.transform()
+
+        # Step 4: Save the Transformed Data
+        self.file_saving(df)
 
 def preprocess_text(text:str) -> str:
 
