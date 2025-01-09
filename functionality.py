@@ -6,6 +6,9 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import nltk
 from nltk.corpus import stopwords
+import emoji
+from gensim.models import Phrases
+from gensim.models.phrases import Phraser
 from nltk.tokenize import word_tokenize
 from nltk.stem import WordNetLemmatizer
 import re
@@ -14,7 +17,9 @@ import contractions
 from sklearn.feature_extraction.text import TfidfVectorizer
 import numpy as np
 import scipy.cluster.hierarchy as sch
+from sklearn.metrics.pairwise import cosine_similarity
 from collections import Counter
+
 
 
 nltk.download('punkt_tab')
@@ -36,7 +41,7 @@ class ETL:
         dataset_url: str = "https://www.kaggle.com/datasets/rmisra/news-category-dataset/data",
         API_kaggle: str = "kaggle.json",
         data_file: str = "News_Category_Dataset_v3.json",
-        save_directory: str = "./data/processed_data.parquet",
+        save_directory: str = "./data/etl_data.parquet",
     ):
         """
         Class initialization
@@ -408,6 +413,145 @@ class EDA:
         plt.tight_layout()
         plt.grid(True)
         plt.show()
+
+class Data_Preparation:
+    """
+    Class for data cleaning(based on EDA) and text preprocessing
+    """
+
+    def __init__(self, data):
+        """
+        Class initialization
+
+        Parameters:
+        data: pd.DataFrame - data for preprocessing
+        """
+        self.data = data
+
+    def text_preprocessing(self, text):
+        """
+        Text Preprocessing
+
+        """
+        text = contractions.fix(text)
+
+        # Remove punctuation and normalize quotes
+        text = re.sub(r'[“”‘’\'"`]', "", text)
+        text = text.translate(str.maketrans("", "", string.punctuation))
+
+        text = emoji.replace_emoji(text, replace="")
+
+        # Tokenize and lowercase
+        tokens = word_tokenize(text.lower())
+
+        # Stop words list
+        stop_words = set(stopwords.words("english"))
+        custom_stop_words = [
+            "day",
+            "life",
+            "new",
+            "people",
+            "like",
+            "make",
+            "year",
+            "world",
+            "woman",
+            "time",
+            "say",
+            "said",
+        ]
+        stop_words.update(custom_stop_words)
+
+        # Remove stopwords, punctuation, and lemmatize
+        tokens = [
+            lemmatizer.lemmatize(word)
+            for word in tokens
+            if word not in stop_words and word not in string.punctuation
+        ]
+
+        # Bigram detection (To handle "Donald Trump", "video games")
+        corpus = [tokens]
+
+        bigram_model = Phrases(corpus, min_count=1, threshold=2)
+        bigram_phraser = Phraser(bigram_model)
+
+        bigram_tokens = bigram_phraser[tokens]
+
+        preprocessed_text = " ".join(bigram_tokens)
+
+        return preprocessed_text
+
+    def data_transformation(self):
+        """
+        Data transformation based on ETL, EDA and text_preprocessing
+
+        """
+
+        # Replcement of redundant categories
+        replacements = {
+            "WORLDPOST": "WORLD NEWS",
+            "THE WORLDPOST": "WORLD NEWS",
+            "COMEDY": "ENTERTAINMENT",
+            "PARENTS": "PARENTING",
+            "HEALTHY LIVING": "WELLNESS",
+            "GREEN": "ENVIRONMENT",
+            "ARTS & CULTURE": "CULTURE & ARTS",
+            "ARTS": "CULTURE & ARTS",
+            "TASTE": "FOOD & DRINK",
+            "STYLE": "STYLE & BEAUTY",
+        }
+        self.data.replace(replacements, inplace=True)
+
+        self.data["headline"] = self.data["headline"].apply(self.text_preprocessing)
+        self.data["short_description"] = self.data["short_description"].apply(
+            self.text_preprocessing
+        )
+
+        # Remove length outliers
+        self.data["headline_length"] = self.data["headline"].apply(len)
+        self.data["description_length"] = self.data["short_description"].apply(len)
+
+        # Thresholds for outliers
+        short_headline_threshold = 5
+        long_headline_threshold = 110
+        short_description_threshold = 10
+        long_description_threshold = 300
+
+        # Identify long headlines/descriptions
+        short_headlines = self.data[
+            self.data["headline_length"] <= short_headline_threshold
+        ]
+        long_headlines = self.data[
+            self.data["headline_length"] > long_headline_threshold
+        ]
+        short_descriptions = self.data[
+            self.data["description_length"] <= short_description_threshold
+        ]
+        long_descriptions = self.data[
+            self.data["description_length"] > long_description_threshold
+        ]
+
+        # Drop length outliers
+        self.data = self.data[
+            ~self.data["headline"].isin(short_headlines)
+            & ~self.data["short_description"].isin(short_descriptions)
+        ].reset_index(drop=True)
+        self.data = self.data[
+            ~self.data["headline"].isin(long_headlines)
+            | ~self.data["short_description"].isin(long_descriptions)
+        ].reset_index(drop=True)
+
+        self.data["processed_text"] = (
+            self.data["headline"] + " " + self.data["short_description"]
+        )
+        
+        # Added data for date trends
+        self.data["month_year"] = self.data["date"].dt.to_period("M")
+
+        self.data.to_parquet('./data/preprocessed_data.parquet')
+
+        return self.data
+
     
     
 

@@ -6,3 +6,8 @@ fastparquet
 matplotlib
 seaborn
 contractions
+gensim
+emoji
+scikit-learn
+nltk
+scipy
