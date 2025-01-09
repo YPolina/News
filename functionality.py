@@ -17,9 +17,10 @@ import scipy.cluster.hierarchy as sch
 from nltk.stem import WordNetLemmatizer
 from nltk.tokenize import word_tokenize
 from gensim.models.phrases import Phraser
-from transformers import BertTokenizer, BertModel
+from transformers import BertTokenizer, BertModel, BertForSequenceClassification, AdamW
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data import WeightedRandomSampler
+from sklearn.metrics import f1_score
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -34,7 +35,7 @@ lemmatizer = WordNetLemmatizer()
 stop_words = set(stopwords.words('english'))
 
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-model = BertModel.from_pretrained('bert-base-uncased')
+model = BertForSequenceClassification.from_pretrained("bert-base-uncased", num_labels = 27)
 
 
 class ETL:
@@ -506,6 +507,15 @@ class Data_Preparation:
             "ARTS": "CULTURE & ARTS",
             "TASTE": "FOOD & DRINK",
             "STYLE": "STYLE & BEAUTY",
+            "QUEER VOICES": "GROUPS VOICES",
+            "LATINO VOICES": "GROUPS VOICES",
+            "BLACK VOICES": "GROUPS VOICES",
+            "SCIENCE": "SCIENCE & TECH",
+            "TECH": "SCIENCE & TECH",
+            "MONEY": "BUSINESS & FINANCES",
+            "COLLEGE": "EDUCATION",
+            "FIFTY": "MISCELLANEOUS",
+            "GOOD NEWS": "MISCELLANEOUS"
         }
         self.data.replace(replacements, inplace=True)
         label_encoder = LabelEncoder()
@@ -604,14 +614,15 @@ class CustomTextDataset(Dataset):
 def collate_batch(batch):
 
     '''
-    Data tokenization and feature extraction
+    Tokenize the batch of text and extract embeddings using BERT
 
     Parameters:
-    batch - batch of data
+    batch - a list of tuples where each tuple contains (text, label)
 
     Returns:
-    word_embeddings - word-level vector representations of text as tensors
-    labels - data labels as tensors
+    input_ids - tensor of tokenized text
+    attention_mask - tensor of attention masks for padding
+    labels - tensor of labels
     '''
 
     texts, labels = zip(*batch)
@@ -626,13 +637,9 @@ def collate_batch(batch):
     input_ids = encoding['input_ids']
     attention_mask = encoding['attention_mask']
 
-    with torch.no_grad():
-        outputs = model(input_ids, attention_mask=attention_mask)
-        word_embeddings = outputs.last_hidden_state
-
     labels = torch.tensor(labels, dtype=torch.long)
-    
-    return word_embeddings, labels
+
+    return input_ids, attention_mask, labels
 
 def sampler(data: pd.DataFrame, target: str = 'category_encoded'):
     '''
@@ -655,6 +662,98 @@ def sampler(data: pd.DataFrame, target: str = 'category_encoded'):
     sampler = WeightedRandomSampler(weights, num_samples=len(weights), replacement=True)
 
     return sampler
+
+def train_epoch(model, dataloader, optimizer, device):
+
+    '''
+    training step
+
+    Parameters:
+    model - model that will be trained
+    dataloader - pre-defined dataloader to train data in batches
+    optimizer - optimizer for convergence
+    device - the device type responsible to load a tensor into memory
+
+    '''
+
+    model.train()
+    total_loss = 0
+    all_preds, all_labels = [], []
+
+    for batch in tqdm(dataloader, desc = 'Training Epoch'):
+        optimizer.zero_grad()
+
+        #Get the input tensors and labels from the batch
+        input_ids, attention_mask, labels = batch
+        input_ids = input_ids.to(device)
+        attention_mask = attention_mask.to(device)
+        labels = labels.to(device)
+
+        #Forward pass: Get model outputs (logits)
+        outputs = model(input_ids, attention_mask = attention_mask, labels = labels)
+
+        #Compute the loss
+        loss = outputs.loss
+        total_loss += loss.item()
+
+        #Backward pass
+        loss.backward()
+        optimizer.step()
+
+        #Get predictions
+        preds = torch.argmax(outputs.logits, dim=1).cpu().numpy()
+        all_preds.extend(preds)
+        all_labels.extend(labels.cpu().numpy())
+
+    avg_loss = total_loss / len(dataloader)
+    f1 = f1_score(all_labels, all_preds, average="macro")
+
+    return avg_loss, f1
+
+@torch.no_grad()
+def evaluate(model, dataloader, device):
+    '''
+    validation step
+
+    Parameters:
+    model - model that will be trained
+    dataloader - pre-defined dataloader to train data in batches
+    device - the device type responsible to load a tensor into memory
+    
+    '''
+    model.eval()
+    total_loss = 0
+    all_preds, all_labels = [], []
+
+
+    for batch in tqdm(dataloader, desc = 'Validation'):
+        
+        #Get the input tensors and labels from the batch
+        input_ids, attention_mask, labels = batch
+        input_ids = input_ids.to(device)
+        attention_mask = attention_mask.to(device)
+        labels = labels.to(device)
+
+        #Forward pass: Get model outputs (logits)
+        outputs = model(input_ids, attention_mask = attention_mask)
+
+        #Compute the loss
+        loss = outputs.loss
+        total_loss += loss.item()
+        
+        #Get predictions
+        preds = torch.argmax(outputs.logits, dim=1).cpu().numpy()
+        all_preds.extend(preds)
+        all_labels.extend(labels.cpu().numpy())
+
+    avg_loss = total_loss / len(dataloader)
+    f1 = f1_score(all_labels, all_preds, average="macro")
+
+    return avg_loss, f1
+
+
+
+
 
     
     
