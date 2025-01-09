@@ -711,7 +711,7 @@ def train_epoch(model, dataloader, optimizer, device):
     return avg_loss, f1
 
 @torch.no_grad()
-def evaluate(model, dataloader, device):
+def validation(model, dataloader, device):
     '''
     validation step
 
@@ -750,6 +750,47 @@ def evaluate(model, dataloader, device):
     f1 = f1_score(all_labels, all_preds, average="macro")
 
     return avg_loss, f1
+
+def train_model(model, train_loader, val_loader, epochs, optimizer, device, patience=3):
+    '''
+    Model Training
+
+    Parameters:
+    model - model that will be trained
+    train_loader&val_loader - pre-defined dataloader to process data in batches
+    epochs - the total number of iterations
+    optimizer - optimizer for convergence
+    device - the device type responsible to load a tensor into memory
+    patience - how many epochs trainer must continue after the loss stopped from decreasing
+
+    '''
+
+    best_val_loss = float('inf')
+    patience_counter = 0
+
+    for epoch in range(epochs):
+
+        print(f"Epoch {epoch + 1}/{epochs}")
+
+        train_loss, train_f1 = train_epoch(model, train_loader, optimizer, device)
+        print(f"Train Loss: {train_loss:.4f}, Train F1: {train_f1:.4f}")
+
+        if (epoch + 1) % 2 == 0:
+
+            val_loss, val_f1 = validation(model, val_loader, device)
+            print(f'Validation Loss: {val_loss:.4f}, Validation F1: {val_f1:.4f}')
+
+            #Early Stopping logic
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                patience_counter = 0
+            else:
+                patience_counter += 1
+                print(f"Patience Counter: {patience_counter}/{patience}")
+
+            if patience_counter >= patience:
+                print("Early stopping triggered!")
+                break
 
 
 
