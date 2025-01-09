@@ -11,3 +11,5 @@ emoji
 scikit-learn
 nltk
 scipy
+torch
+transformers

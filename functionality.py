@@ -1,33 +1,40 @@
-import pandas as pd
 import os
-import opendatasets as od
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-import nltk
-from nltk.corpus import stopwords
-import emoji
-from gensim.models import Phrases
-from gensim.models.phrases import Phraser
-from nltk.tokenize import word_tokenize
-from nltk.stem import WordNetLemmatizer
 import re
+import nltk
+import torch
+import emoji
 import string
-import contractions
-from sklearn.feature_extraction.text import TfidfVectorizer
 import numpy as np
-import scipy.cluster.hierarchy as sch
-from sklearn.metrics.pairwise import cosine_similarity
+import contractions
+import pandas as pd
+import seaborn as sns
+import opendatasets as od
 from collections import Counter
-
+import matplotlib.pyplot as plt
+from nltk.corpus import stopwords
+from gensim.models import Phrases
+import scipy.cluster.hierarchy as sch
+from nltk.stem import WordNetLemmatizer
+from nltk.tokenize import word_tokenize
+from gensim.models.phrases import Phraser
+from transformers import BertTokenizer, BertModel
+from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import WeightedRandomSampler
+from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.utils.class_weight import compute_class_weight
 
 
 nltk.download('punkt_tab')
 nltk.download('wordnet')
 nltk.download('stopwords')
 
-stop_words = set(stopwords.words('english'))
 lemmatizer = WordNetLemmatizer()
+stop_words = set(stopwords.words('english'))
+
+tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+model = BertModel.from_pretrained('bert-base-uncased')
 
 
 class ETL:
@@ -193,7 +200,7 @@ def tf_idf(text: str, max_features: int = 100):
     
     Returns:
     tf_idf_vectors: np.array - vectors of words
-    tfidf_df - 
+    tfidf_df: pd.DataFrame - Dataframe with vectors of words and there names
     """
 
     tfidf = TfidfVectorizer(max_features=max_features, stop_words='english')
@@ -501,6 +508,11 @@ class Data_Preparation:
             "STYLE": "STYLE & BEAUTY",
         }
         self.data.replace(replacements, inplace=True)
+        label_encoder = LabelEncoder()
+        self.data['category_encoded'] = label_encoder.fit_transform(self.data['category'])
+
+        #encoder = LabelEncoder()
+        #encoder.fit_transform(self.data['category'])
 
         self.data["headline"] = self.data["headline"].apply(self.text_preprocessing)
         self.data["short_description"] = self.data["short_description"].apply(
@@ -538,7 +550,10 @@ class Data_Preparation:
         ].reset_index(drop=True)
         self.data = self.data[
             ~self.data["headline"].isin(long_headlines)
-            | ~self.data["short_description"].isin(long_descriptions)
+        ].reset_index(drop=True)
+
+        self.data = self.data[
+            ~self.data["short_description"].isin(long_descriptions)
         ].reset_index(drop=True)
 
         self.data["processed_text"] = (
@@ -551,6 +566,95 @@ class Data_Preparation:
         self.data.to_parquet('./data/preprocessed_data.parquet')
 
         return self.data
+
+class CustomTextDataset(Dataset):
+    '''
+    Class Dataset
+
+    '''
+    def __init__(self, data, labels, tokenizer, max_length):
+        '''
+        Class initialization
+
+        '''
+        self.data = data
+        self.labels = labels
+        self.tokenizer = tokenizer
+        self.max_length = max_length
+
+    def __len__(self):
+        '''
+        returns the length of the labels 
+
+        '''
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        '''
+        get a sample and construct the dataset
+
+        '''
+        text = self.data.iloc[idx]
+        label = self.labels.iloc[idx]
+        
+        sample = {"Text": text, "Class": label}
+        return sample
+
+
+def collate_batch(batch):
+
+    '''
+    Data tokenization and feature extraction
+
+    Parameters:
+    batch - batch of data
+
+    Returns:
+    word_embeddings - word-level vector representations of text as tensors
+    labels - data labels as tensors
+    '''
+
+    texts, labels = zip(*batch)
+
+    encoding = tokenizer(list(texts),
+                        padding = True,
+                        truncation = True,
+                        max_length = 260,
+                        return_tensors="pt",
+                        add_special_tokens=True)
+
+    input_ids = encoding['input_ids']
+    attention_mask = encoding['attention_mask']
+
+    with torch.no_grad():
+        outputs = model(input_ids, attention_mask=attention_mask)
+        word_embeddings = outputs.last_hidden_state
+
+    labels = torch.tensor(labels, dtype=torch.long)
+    
+    return word_embeddings, labels
+
+def sampler(data: pd.DataFrame, target: str = 'category_encoded'):
+    '''
+    Weighted Sampling
+
+    Parameters:
+    data: pd.DataFrame - data that need to be 
+    target: str - name of column with labels
+
+    Returns:
+    sampler - class instance that samples elements from [0,..,len(weights)-1] with given probabilities
+
+    '''
+
+    category_counts = Counter(data[target])
+    num_samples = len(data)
+    class_weights = {label: counts/num_samples for label, counts in category_counts.items()}
+    weights = data[target].map(class_weights)
+    
+    sampler = WeightedRandomSampler(weights, num_samples=len(weights), replacement=True)
+
+    return sampler
 
     
     
