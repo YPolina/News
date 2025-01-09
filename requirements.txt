@@ -13,3 +13,4 @@ nltk
 scipy
 torch
 transformers
+neptune-pytorch

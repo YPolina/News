@@ -4,6 +4,7 @@ import nltk
 import torch
 import emoji
 import string
+import neptune
 import numpy as np
 import contractions
 import pandas as pd
@@ -16,6 +17,7 @@ from gensim.models import Phrases
 import scipy.cluster.hierarchy as sch
 from nltk.stem import WordNetLemmatizer
 from nltk.tokenize import word_tokenize
+from neptune_pytorch import NeptuneLogger
 from gensim.models.phrases import Phraser
 from transformers import BertTokenizer, BertModel, BertForSequenceClassification, AdamW
 from torch.utils.data import Dataset, DataLoader
@@ -36,6 +38,11 @@ stop_words = set(stopwords.words('english'))
 
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 model = BertForSequenceClassification.from_pretrained("bert-base-uncased", num_labels = 27)
+
+run = neptune.init_run(
+    project="yatskopolina1/News",
+    api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiJiNTYzMDJkMi00YThkLTRiYWYtOGU5ZC02MGFiOGEzNjkzYTIifQ==",
+)
 
 
 class ETL:
@@ -751,7 +758,7 @@ def validation(model, dataloader, device):
 
     return avg_loss, f1
 
-def train_model(model, train_loader, val_loader, epochs, optimizer, device, patience=3):
+def train_model(model, train_loader, val_loader, epochs, optimizer, device, checkpoint_path, patience=3):
     '''
     Model Training
 
@@ -771,19 +778,31 @@ def train_model(model, train_loader, val_loader, epochs, optimizer, device, pati
     for epoch in range(epochs):
 
         print(f"Epoch {epoch + 1}/{epochs}")
+        run["epoch"] = epoch + 1
 
         train_loss, train_f1 = train_epoch(model, train_loader, optimizer, device)
         print(f"Train Loss: {train_loss:.4f}, Train F1: {train_f1:.4f}")
+
+        run[f"train/loss"].log(train_loss)
+        run[f"train/f1"].log(train_f1)
 
         if (epoch + 1) % 2 == 0:
 
             val_loss, val_f1 = validation(model, val_loader, device)
             print(f'Validation Loss: {val_loss:.4f}, Validation F1: {val_f1:.4f}')
 
+            run[f"val/loss"].log(val_loss)
+            run[f"val/f1"].log(val_f1)
+
             #Early Stopping logic
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 patience_counter = 0
+
+                torch.save(model.state_dict(), checkpoint_path)
+                print("Saved Best Model")
+                run["model/checkpoint"].upload(checkpoint_path)
+
             else:
                 patience_counter += 1
                 print(f"Patience Counter: {patience_counter}/{patience}")
