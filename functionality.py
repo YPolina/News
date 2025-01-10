@@ -5,9 +5,11 @@ import torch
 import emoji
 import string
 import neptune
+import logging
 import numpy as np
 import contractions
 import pandas as pd
+from time import time
 import seaborn as sns
 import opendatasets as od
 from collections import Counter
@@ -38,11 +40,6 @@ stop_words = set(stopwords.words('english'))
 
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 model = BertForSequenceClassification.from_pretrained("bert-base-uncased", num_labels = 27)
-
-run = neptune.init_run(
-    project="yatskopolina1/News",
-    api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiJiNTYzMDJkMi00YThkLTRiYWYtOGU5ZC02MGFiOGEzNjkzYTIifQ==",
-)
 
 
 class ETL:
@@ -758,7 +755,7 @@ def validation(model, dataloader, device):
 
     return avg_loss, f1
 
-def train_model(model, train_loader, val_loader, epochs, optimizer, device, checkpoint_path, patience=3):
+def train_model_with_callbacks(model, train_loader, val_loader, epochs, optimizer, device, callbacks):
     '''
     Model Training
 
@@ -768,48 +765,129 @@ def train_model(model, train_loader, val_loader, epochs, optimizer, device, chec
     epochs - the total number of iterations
     optimizer - optimizer for convergence
     device - the device type responsible to load a tensor into memory
-    patience - how many epochs trainer must continue after the loss stopped from decreasing
+    callbacks - callbacks during training
 
     '''
+
+    for callback in callbacks:
+        callback.on_train_begin()
 
     best_val_loss = float('inf')
     patience_counter = 0
 
     for epoch in range(epochs):
 
+        logs = {"epoch": epoch + 1, "model": model}
+
         print(f"Epoch {epoch + 1}/{epochs}")
-        run["epoch"] = epoch + 1
 
         train_loss, train_f1 = train_epoch(model, train_loader, optimizer, device)
+        logs["train_loss"] = train_loss
+        logs["train_f1"] = train_f1
+
         print(f"Train Loss: {train_loss:.4f}, Train F1: {train_f1:.4f}")
 
-        run[f"train/loss"].log(train_loss)
-        run[f"train/f1"].log(train_f1)
+        for callback in callbacks:
+            callback.on_epoch_end(epoch, logs)
 
         if (epoch + 1) % 2 == 0:
 
             val_loss, val_f1 = validation(model, val_loader, device)
-            print(f'Validation Loss: {val_loss:.4f}, Validation F1: {val_f1:.4f}')
+            logs["val_loss"] = val_loss
+            logs["val_f1"] = val_f1
+            print(f"Val Loss: {val_loss:.4f}, Val F1: {val_f1:.4f}")
 
-            run[f"val/loss"].log(val_loss)
-            run[f"val/f1"].log(val_f1)
+            for callback in callbacks:
+                callback.on_epoch_end(epoch, logs)
 
-            #Early Stopping logic
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
-                patience_counter = 0
-
-                torch.save(model.state_dict(), checkpoint_path)
-                print("Saved Best Model")
-                run["model/checkpoint"].upload(checkpoint_path)
-
-            else:
-                patience_counter += 1
-                print(f"Patience Counter: {patience_counter}/{patience}")
-
-            if patience_counter >= patience:
-                print("Early stopping triggered!")
+            if any(getattr(callback, "stop_training", False) for callback in callbacks):
                 break
+
+        for callback in callbacks:
+            callback.on_train_end()
+
+training_logs = []
+class Callback:
+
+    '''
+    Base Callback Class
+
+    '''
+
+    def __init__(self, log_interval: int = 10):
+        '''
+        Class initialization
+
+        Parameters:
+        log_interval - he number of training iterations before logging
+
+        '''
+        self.log_interval = log_interval
+        logging.basicConfig(level = logging.INFO, format = '%(message)s')
+
+    def on_epoch_begin(self, epoch:int):
+        self.epoch_start_time = time()
+        logging.info(f"Epoch {epoch+1} starting.")
+
+    def on_epoch_end(self, epoch:int, logs = None):
+        elapsed_time = time() - self.epoch_start_time
+        logging.info(f"Epoch {epoch + 1} finished in {elapsed_time:.2f} seconds.")
+        logs['epoch_time'] = elapsed_time
+        training_logs.append(logs)
+    
+    def on_train_begin(self, logs=None):
+        pass
+    
+    def on_train_end(self, logs=None):
+        pass
+
+class EarlyStoppingCallBack(Callback):
+    
+    def __init__(self, patience: int = 3):
+        self.patience = patience
+        self.best_loss = float("inf")
+        self.patience_counter = 0
+        self.stop_training = False
+
+    def on_epoch_end(self, epoch, logs = None):
+        val_loss = logs.get("val_loss")
+        if val_loss < self.best_loss:
+            self.best_loss = val_loss
+            self.patience_counter = 0
+        else:
+            self.patience_counter += 1
+            if self.patience_counter >= self.patience:
+                print("Early stopping triggered!")
+                self.stop_training = True
+
+
+class ModelCheckpointCallback(Callback):
+
+    def __init__(self, checkpoint_path):
+        self.checkpoint_path = checkpoint_path
+        self.best_loss = float('inf')
+
+    def on_epoch_end(self, epoch, logs = None):
+        val_loss = logs.get("val_loss")
+        if val_loss < self.best_loss:
+            self.best_loss = val_loss
+            torch.save(logs.get("model").state_dict(), self.checkpoint_path)
+            print(f"Model saved at epoch {epoch + 1}")
+
+class LoggingCallBack(Callback):
+
+    def __init__(self, run):
+        self.run = run
+
+    def on_epoch_end(self, epoch, logs=None):
+        for key, value in logs.items():
+            if key != "model":
+                self.run[f"{key}"].log(value)
+
+
+
+
+    
 
 
 
