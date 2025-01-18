@@ -11,6 +11,7 @@ emoji
 scikit-learn
 nltk
 scipy
-torch
 transformers
 neptune-pytorch
+torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+optuna
