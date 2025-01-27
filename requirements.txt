@@ -6,3 +6,12 @@ fastparquet
 matplotlib
 seaborn
 contractions
+gensim
+emoji
+scikit-learn
+nltk
+scipy
+transformers
+neptune-pytorch
+torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+optuna
