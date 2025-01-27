@@ -6,3 +6,4 @@ kaggle.json
 /data
 /.neptune
 /model
+.env
